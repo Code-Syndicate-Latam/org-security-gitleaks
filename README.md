@@ -1,115 +1,174 @@
-# 🔐 Gitleaks + pre-commit (Configuración Local)
+1. Prerrequisitos obligatorios
 
-Este repositorio utiliza **Gitleaks** integrado con **pre-commit** para prevenir la inclusión accidental de secretos (API keys, tokens, credenciales, etc.) antes de que el código sea versionado.
+Antes de cualquier cosa, tu entorno local debe cumplir estos tres puntos:
 
-La lógica de seguridad está **centralizada en un repositorio de la organización**, mientras que cada repositorio consumidor define su configuración local.
-
----
-
-## 📋 Prerrequisitos
-
-Antes de comenzar, asegúrate de cumplir con lo siguiente:
-
-- Python instalado
-- Acceso SSH a GitHub y a la organización
-- Los siguientes archivos deben existir en la raíz del repositorio:
-  - `.pre-commit-config.yaml`
-  - `.gitleaks.toml`
-
----
-
-## 🛠 Instalación de pre-commit
-
-Verifica si `pre-commit` ya está instalado:
-
-```bash
+1.1 Tener pre-commit instalado
 pre-commit --version
 
-Si no está instalado, puedes instalarlo con:
+
+Si no está instalado:
 
 pip install pre-commit
 
-O en sistemas Debian/Kali:
+
+o en Kali / Debian:
 
 sudo apt install pre-commit
 
-🔑 Verificar acceso SSH a GitHub
+1.2 Tener acceso SSH al repo de la organización
 
-El hook de Gitleaks se obtiene desde un repositorio privado de la organización usando SSH.
+Tu hook usa:
 
-Verifica tu acceso ejecutando:
+repo: git@github.com:Code-Syndicate-Latam/org-security-gitleaks.git
+
+
+Eso requiere SSH, no HTTPS.
+
+Verifica acceso:
 
 ssh -T git@github.com
 
-La salida esperada debe ser similar a:
+
+Debe responder algo como:
 
 Hi <usuario>! You've successfully authenticated...
 
-⚙️ Instalación del hook en el repositorio
 
-Desde la raíz del repositorio, ejecuta:
+Si esto falla, pre-commit no podrá clonar el repo.
+
+1.3 Estar dentro de un repo que ya tenga el PR mergeado
+
+Es decir, en el repo ms-usuario, ms-auth o Front-End, debe existir:
+
+.pre-commit-config.yaml
+.gitleaks.toml
+
+
+Verifica:
+
+ls -a
+
+2. Tu .pre-commit-config.yaml (correcto)
+
+El que tienes es válido:
+
+repos:
+  - repo: git@github.com:Code-Syndicate-Latam/org-security-gitleaks.git
+    rev: v8.21.0
+    hooks:
+      - id: gitleaks
+        name: Gitleaks - Prevent secrets
+        args:
+          - "--redact"
+          - "--config=.gitleaks.toml"
+
+
+Punto clave:
+
+rev apunta a un tag/version del repo central
+
+args usa el .gitleaks.toml local al repo consumidor
+
+3. Paso a paso para ejecutarlo localmente
+Paso 1 – Instalar los hooks en ese repositorio
+
+Desde la raíz del repo:
 
 pre-commit install
 
+
 Esto:
 
-    Instala el hook en .git/hooks/pre-commit
+Crea .git/hooks/pre-commit
 
-    Activa la ejecución automática de Gitleaks antes de cada commit
+Conecta Git con pre-commit
 
-▶️ Ejecución manual inicial (recomendado)
+Paso 2 – Descargar y preparar el hook centralizado
 
-Para validar el estado actual del repositorio y escanear todos los archivos, ejecuta:
+Ejecuta:
 
 pre-commit run gitleaks --all-files
 
+
 En la primera ejecución, pre-commit:
 
-    Clonará el repositorio central de seguridad
+Clonará org-security-gitleaks
 
-    Cacheará el hook localmente
+Cacheará el hook en:
 
-    Ejecutará Gitleaks utilizando el archivo .gitleaks.toml del repositorio
+~/.cache/pre-commit/
 
-Si se detectan secretos, el comando fallará y mostrará el detalle correspondiente.
-🔄 Uso normal (automático)
 
-A partir de este punto, no es necesario ejecutar nada manualmente.
+Si hay secretos → falla
+Si no hay secretos → pasa
 
-Cada vez que ejecutes:
+Paso 3 – Flujo normal de trabajo (automático)
 
-git commit -m "mensaje del commit"
+A partir de ahora, cada vez que hagas:
 
-Se ejecutará automáticamente Gitleaks:
+git commit -m "mensaje"
 
-    ✅ Si no se detectan secretos, el commit continúa
 
-    ❌ Si se detectan secretos, el commit se bloquea
+Ocurre automáticamente:
 
-⬆️ Actualización del hook (opcional)
+Se ejecuta Gitleaks
 
-Si el repositorio central publica una nueva versión del hook, puedes actualizarlo con:
+Si detecta secretos → el commit se bloquea
+
+Si pasa → el commit continúa
+
+No tienes que correr nada manualmente.
+
+4. (Opcional) Actualizar la versión del hook central
+
+Si el repo central publica un nuevo tag:
 
 pre-commit autoupdate
 
-Esto actualizará la versión (rev) definida en .pre-commit-config.yaml.
-🧯 Errores comunes
-❌ Error de permisos SSH
 
-Permission denied (publickey)
+Esto:
 
-Causa: tu clave SSH no tiene acceso al repositorio de la organización.
-❌ Error: no se encuentra .gitleaks.toml
+Actualiza rev: en .pre-commit-config.yaml
 
+Solo si el repo central es accesible
+
+5. Errores comunes y cómo identificarlos
+Error: no puede clonar el repo
+Permission denied (publickey).
+
+
+👉 Tu SSH key no tiene acceso a la org.
+
+Error: no encuentra .gitleaks.toml
 error loading config: open .gitleaks.toml: no such file or directory
 
-Causa: el archivo .gitleaks.toml no existe en la raíz del repositorio.
-✅ Resumen
 
-    Gitleaks se ejecuta localmente antes de cada commit
+👉 El archivo debe existir en el repo consumidor, no en el repo central.
 
-    El hook está centralizado en un repositorio de seguridad de la organización
+Error: hook no encontrado
+Hook 'gitleaks' not found
 
-    Cada repositorio define su configuración mediante .gitleaks.toml
 
-    El mismo estándar de seguridad se utiliza localmente y en CI/CD
+👉 El repo org-security-gitleaks no expone un hook con ese id.
+Debe existir un .pre-commit-hooks.yaml en ese repo.
+
+6. Resumen ejecutivo
+
+✔ No copias nada manualmente
+✔ El hook vive en el repo central
+✔ El config vive en cada repo
+✔ Solo ejecutas localmente:
+
+pre-commit install
+pre-commit run gitleaks --all-files
+
+
+Y desde ese punto queda 100% automático.
+
+Si quieres, en el siguiente mensaje puedo:
+
+Revisar el org-security-gitleaks y validar que el hook esté bien definido
+
+Simular un fallo real de Gitleaks y cómo se corrige
+
+Alinear este pre-commit con el workflow de GitHub Actions para que ambos usen exactamente la misma lógica
